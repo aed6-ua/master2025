@@ -1,0 +1,11 @@
+torch
+numpy
+pandas
+scipy
+
+deepxde
+
+mlflow
+pyyaml
+
+plotly

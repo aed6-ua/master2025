@@ -1,0 +1,52 @@
+# --- Experiment Setup ---
+experiment_name: "Wave-Equation-BCSNN" #"Wave-Equation"
+run_name: "BCSNN"
+mlflow_tracking_uri: "file:./mlruns"
+
+# --- Problem Definition ---
+problem:
+  name: "WaveEquationProblem"  # Use the wave equation problem class
+  L: 1.0
+  T: 1.0
+  c_squared: 2.0  # Physical parameter for the wave equation
+  ic_params:
+    mode: 4       # Initial standing wave mode
+    delta: 10.0   # Initial amplitude
+  ic_bcs:         # Which initial conditions and boundary conditions to use
+    ic: false
+    bc: false
+    ic_ut: false
+
+# --- Model Architecture ---
+model:
+  name: "BCSNN"  # Use the standard PINN (MLP) model
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "tanh"
+  output_transform: false
+  n_freq_k_fixed: 10
+  n_freq_k_learnable: 10
+  k_init_bounds: [-1.0, 20.0]
+
+# --- Training ---
+trainer:
+  name: "StandardTrainer"
+  # loss weights for [PDE, BC, IC_u, IC_ut]
+  loss_weights: [1.0]
+  optimizer: "Adam"
+  learning_rate: 0.001
+  iterations: 1000
+  use_lbfgs: false
+  lbfgs_maxiter: 3000
+
+# --- Data & Sampling ---
+data:
+  num_domain: 500
+  num_boundary: 100
+  num_initial: 100
+  num_test: 500
+
+# --- Execution ---
+execution:
+  device: "gpu"
