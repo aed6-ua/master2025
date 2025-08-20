@@ -6,8 +6,8 @@ This repository contains the code for a Master's thesis research project on usin
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://gitlab.inria.fr/begiraul/master2025-eduard-snn.git
-    cd master2025-eduard-snn
+    git clone https://github.com/aed6-ua/master2025.git
+    cd master2025
     ```
 
 2.  **Create a Python virtual environment:**
