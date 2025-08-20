@@ -15,11 +15,20 @@ class WaveEquationProblem(BaseProblem):
         ic_params = problem_cfg.get('ic_params', {})
         self.mode = ic_params.get('mode', 4)
         self.delta = ic_params.get('delta', 10.0)
+        self.multi = ic_params.get('multi', False)  # Whether to use multi-scale initial conditions
         self.ic_bcs = problem_cfg.get('ic_bcs', {})
 
         super().__init__(config)
         self.plot_amplitude = self.get_plot_amplitude()
         print(f"Initialized WaveEquationProblem with c^2 = {self.c_squared}")
+
+    @property
+    def x_min(self):
+        return 0.0
+
+    @property
+    def x_max(self):
+        return self.L
 
     def setup_domain(self):
         geom = dde.geometry.Interval(0, self.L)
@@ -36,7 +45,11 @@ class WaveEquationProblem(BaseProblem):
         """Returns the function for the initial displacement u(x, 0)."""
         def ic_func_u(x_input_np):
             if isinstance(x_input_np, torch.Tensor):
+                if self.multi:
+                    return self.delta * torch.sin(self.mode * np.pi * x_input_np[:, 0:1]) + torch.sin(np.pi * x_input_np[:, 0:1])
                 return self.delta * torch.sin(self.mode * np.pi / self.L * x_input_np[:, 0:1])
+            if self.multi:
+                return self.delta * np.sin(self.mode * np.pi * x_input_np[:, 0:1]) + np.sin(np.pi * x_input_np[:, 0:1])
             return self.delta * np.sin(self.mode * np.pi / self.L * x_input_np[:, 0:1])
         return ic_func_u
 
@@ -87,11 +100,14 @@ class WaveEquationProblem(BaseProblem):
             _mode = torch.tensor(self.mode, device=xt.device, dtype=xt.dtype)
             
             # Using torch functions for GPU compatibility
+            if self.multi:
+                return _delta * torch.sin(_mode * torch.pi * x) * torch.cos(_mode * torch.pi * c * t) + torch.sin(torch.pi * x) * torch.cos(torch.pi * c * t)
             return _delta * torch.sin(_mode * torch.pi / _L * x) * torch.cos(_mode * torch.pi * c / _L * t)
         else: # NumPy
             x, t = xt[:, 0:1], xt[:, 1:2]
             c = np.sqrt(self.c_squared)
-            
+            if self.multi:
+                return self.delta * np.sin(self.mode * np.pi * x) * np.cos(self.mode * np.pi * c * t) + np.sin(np.pi * x) * np.cos(np.pi * c * t)
             return self.delta * np.sin(self.mode * np.pi / self.L * x) * np.cos(self.mode * np.pi * c / self.L * t)
             
     def get_plot_amplitude(self):
@@ -99,16 +115,32 @@ class WaveEquationProblem(BaseProblem):
         return self.delta
     
     def get_output_transform(self):
-        def output_transform(inputs, outputs):
-            """
-            Custom output transform for the wave equation.
-            This is used to apply any specific transformations to the output of the model.
-            For wave equations, we apply u(x, t) = b(x,t) + phi(x,t) * u_nn(x,t)
-            where b(x,t) is the initial condition solution and phi(x,t) is the ADF. u_nn(x,t) is the neural network output.
-            """
+        # def output_transform(inputs, outputs):
+        """
+        Custom output transform for the wave equation.
+        This is used to apply any specific transformations to the output of the model.
+        For wave equations, we apply u(x, t) = b(x,t) + phi(x,t) * u_nn(x,t)
+        where b(x,t) is the initial condition solution and phi(x,t) is the ADF. u_nn(x,t) is the neural network output.
+        """
+        def output_transform(inputs, v_raw_output):
             x, t = inputs[:, 0:1], inputs[:, 1:2]
-            b = self.get_initial_condition_func()(x)
-            phi = x * (self.L - x) * t**2
-            return b + phi * outputs
+            
+            # Term for u(x,0) = f(x)
+            # Uses torch.sin directly, just like bkd.sin in the standalone script
+            initial_condition_term = self.delta * torch.sin(self.mode * np.pi / self.L * x[:, 0:1])
+            
+            # Factor for u(0,t)=u(L,t)=0
+            boundary_factor = x * (self.L - x)
+            
+            # Factor for u_t(x,0)=0
+            initial_velocity_factor = t**2
+            
+            u = initial_condition_term + boundary_factor * initial_velocity_factor * v_raw_output
+            return u
         return output_transform
+        #     x, t = inputs[:, 0:1], inputs[:, 1:2]
+        #     b = self.get_initial_condition_func()(x)
+        #     phi = x * (self.L - x) * t**2
+        #     return b + phi * outputs
+        # return output_transform
         

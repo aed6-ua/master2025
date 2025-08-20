@@ -1,0 +1,36 @@
+experiment_name: "Schrodinger-NLS-SNN"
+run_name: "SNN"
+mlflow_tracking_uri: "file:./mlruns"
+
+problem:
+  name: "SchrodingerEquationProblem"
+  ground_truth_path: "dataset/NLS.mat"
+
+model:
+  name: "SpectralNN"
+  output_dim: 2  # CRITICAL: Predicts u and v
+  mlp:
+    hidden_dim: 100
+    num_layers: 4
+    activation: "tanh"
+  n_freq_k_learnable: 30 # Number of learnable frequencies
+  k_init_bounds: [0.1, 200.0] # Initial guess range for frequencies
+  output_transform: false
+
+trainer:
+  name: "SpectralTrainer"
+  # 2 PDE + 2 IC + 4 BC = 8 loss terms.
+  loss_weights: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  learning_rate: 0.001
+  iterations: 1000
+  use_lbfgs: true
+  lbfgs_maxiter: 1000
+  save_model: false
+
+data:
+  num_domain: 10000
+  num_boundary: 200
+  num_initial: 200
+
+execution:
+  device: "gpu"

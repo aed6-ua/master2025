@@ -5,6 +5,7 @@ import mlflow
 import deepxde as dde
 import os
 import plotly.express as px
+import io
 
 class MLFlowMetricsLogger(dde.callbacks.Callback):
     """
@@ -92,12 +93,85 @@ class MLFlowMetricsLogger(dde.callbacks.Callback):
                  metric_name = metric_func.__name__ if hasattr(metric_func, '__name__') else "metric"
                  log_data[f'metric_test_{metric_name}'] = metric_val
 
+        self._log_grad_diagnostics()
+        self._log_condition_proxy()
+
         if log_data and mlflow.active_run():
             try:
                 mlflow.log_metrics(log_data, step=current_step)
                 self._last_log_step = current_step
             except Exception as e:
                 print(f"Warning: MLflow logging failed at step {current_step}. Error: {e}")
+
+    def _log_grad_diagnostics(self):
+        """Logs gradient norms per loss term and their ratio."""
+        try:
+            # Pull one batch from the training set
+            X = torch.as_tensor(self.model.data.train_x, dtype=torch.float64)
+            if torch.cuda.is_available():
+                X = X.cuda()
+            targets = None  # PDE problems don't have explicit targets
+            aux_vars = getattr(self.model.data, "train_aux_vars", None)
+
+            # Get outputs and per-term losses
+            outputs, losses = self.model.outputs_losses_train(X, targets, aux_vars)
+
+            grad_norms = []
+            for i in range(losses.shape[0]):
+                self.model.net.zero_grad()
+                losses[i].backward(retain_graph=True)
+
+                total_norm = torch.sqrt(sum(
+                    (p.grad**2).sum()
+                    for p in self.model.net.parameters() if p.grad is not None
+                ))
+                grad_norms.append(total_norm.item())
+
+            if grad_norms:
+                max_norm = max(grad_norms)
+                min_norm = min(grad_norms)
+                ratio = max_norm / min_norm if min_norm > 0 else float("nan")
+
+                mlflow.log_metric("grad_norm_ratio", ratio, step=self.model.train_state.step)
+                for i, g in enumerate(grad_norms):
+                    mlflow.log_metric(f"grad_norm_term_{i}", g, step=self.model.train_state.step)
+
+        except Exception as e:
+            print(f"Grad diagnostics logging failed at step {self.model.train_state.step}: {e}")
+
+
+
+    def _log_condition_proxy(self):
+        """Logs a Hessian–vector product conditioning proxy."""
+        try:
+            params = [p for p in self.model.net.parameters() if p.requires_grad]
+            v = [torch.randn_like(p) for p in params]
+
+            X = torch.as_tensor(self.model.data.train_x, dtype=torch.float64)
+            if torch.cuda.is_available():
+                X = X.cuda()
+            targets = None
+            aux_vars = getattr(self.model.data, "train_aux_vars", None)
+
+            outputs, losses = self.model.outputs_losses_train(X, targets, aux_vars)
+            total_loss = torch.sum(losses)
+
+            grads = torch.autograd.grad(total_loss, params, create_graph=True)
+            Hv = torch.autograd.grad(grads, params, v, retain_graph=True)
+
+            hv_norms = [torch.norm(hvi).item() for hvi in Hv if hvi is not None]
+            if hv_norms:
+                top = np.percentile(hv_norms, 90)
+                bottom = np.percentile(hv_norms, 10)
+                proxy = top / bottom if bottom != 0 else float('nan')
+                mlflow.log_metric("condition_proxy", proxy, step=self.model.train_state.step)
+
+        except Exception as e:
+            print(f"Condition proxy logging failed at step {self.model.train_state.step}: {e}")
+
+
+
+
 
 
 class PredictionLogger(dde.callbacks.Callback):
@@ -153,11 +227,11 @@ class PredictionLogger(dde.callbacks.Callback):
             all_data.append(df_step)
         
         full_df = pd.concat(all_data, ignore_index=True)
-            
-        csv_filename = f"prediction_history.csv"
-        full_df.to_csv(csv_filename, index=False)
-        mlflow.log_artifact(csv_filename, "data_artifacts")
-        print(f"Logged prediction history to {csv_filename}")
+        
+        csv_buffer = io.StringIO()
+        full_df.to_csv(csv_buffer, index=True)
+        mlflow.log_text(csv_buffer.getvalue(), artifact_file=f"data_artifacts/prediction_history.csv")
+        print(f"Logged prediction history")
 
     def _log_predictions(self, step):
         try:
@@ -210,9 +284,9 @@ class ModelParameterLogger(dde.callbacks.Callback):
             df.columns = [f'{param_name}_{i}' for i in range(df.shape[1])]
             df.index.name = 'step'
             
-            csv_filename = f"{param_name}_history.csv"
-            df.to_csv(csv_filename)
-            mlflow.log_artifact(csv_filename, "data_artifacts")
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=True)
+            mlflow.log_text(csv_buffer.getvalue(), artifact_file=f"data_artifacts/{param_name}_history.csv")
             
             # Create evolution plot
             df.reset_index(inplace=True)
@@ -244,3 +318,30 @@ class ModelParameterLogger(dde.callbacks.Callback):
                 if 'w_n' not in self.history: self.history['w_n'] = []
                 current_w_n = self.net.generate_w_n().cpu().numpy().squeeze()
                 self.history['w_n'].append(current_w_n.copy())
+
+# class GradientImbalanceLogger(dde.callbacks.Callback):
+#     def __init__(self, net, loss log_every=300):
+#         super().__init__()
+#         self.log_every = log_every
+#         self.net = net  # Direct reference to the network module
+
+#     def on_epoch_end(self):
+#         step = self.model.train_state.step
+#         if step % self.log_every != 0:
+#             return
+        
+#         loss_terms = self.net.loss_terms  # This might be accessible differently depending on your trainer
+#         grad_norms = []
+#         for term in loss_terms:
+#             self.net.zero_grad()
+#             term.backward(retain_graph=True)
+#             norm = torch.sqrt(sum((p.grad**2).sum() for p in self.net.parameters() if p.grad is not None))
+#             grad_norms.append(norm.item())
+        
+#         if grad_norms:
+#             max_norm = max(grad_norms)
+#             min_norm = min(grad_norms)
+#             ratio = max_norm / min_norm if min_norm != 0 else np.nan
+#             mlflow.log_metric("grad_norm_ratio", ratio, step=step)
+#             for i, g in enumerate(grad_norms):
+#                 mlflow.log_metric(f"grad_norm_term_{i}", g, step=step)

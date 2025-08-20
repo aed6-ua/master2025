@@ -1,0 +1,46 @@
+# configs/burgers/2_bcnn.yaml
+
+experiment_name: "Burgers-SNN"
+run_name: "SNN"
+mlflow_tracking_uri: "file:./mlruns"
+
+problem:
+  name: "BurgersEquationProblem"
+  L_min: -1.0
+  L_max: 1.0
+  T: 0.99
+  nu: 0.003183 # 0.01 / pi
+  ground_truth_path: "dataset/Burgers.npz"
+  ic_bcs:
+    ic: true
+    bc: true
+
+model:
+  name: "SpectralNN"
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "tanh"
+  n_freq_k_learnable: 50
+  k_init_bounds: [3, 200.0]
+  output_transform: false
+
+trainer:
+  name: "SpectralTrainer"
+  loss_weights: [1.0, 100, 100] # [PDE, BC, IC]
+  optimizer: "Adam"
+  learning_rate: 0.001
+  iterations: 10000
+  use_lbfgs: true
+  lbfgs_maxiter: 10000
+  save_model: true
+
+# --- Data & Sampling ---
+data:
+  num_domain: 10000
+  num_boundary: 200
+  num_initial: 200
+  num_test: 2000
+
+execution:
+  device: "gpu"

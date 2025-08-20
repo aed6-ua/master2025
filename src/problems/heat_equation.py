@@ -95,13 +95,23 @@ def ic_piecewise_linear(x_coords, L_domain):
 
 class HeatEquationProblem(BaseProblem):
     def __init__(self, config):
-        self.L = config['problem']['L']
-        self.T = config['problem']['T']
-        self.alpha = config['problem']['alpha']
-        self.ic_type = config['problem']['ic_type']
-        self.ic_params = config['problem'].get('ic_params', {})
+        problem_cfg = config['problem']
+        self.L = problem_cfg['L']
+        self.T = problem_cfg['T']
+        self.alpha = problem_cfg['alpha']  # Diffusion coefficient
+        self.ic_type = problem_cfg['ic_type']  # Type of initial condition
+        self.ic_params = problem_cfg.get('ic_params', {})
+        self.ic_bcs = problem_cfg.get('ic_bcs', {})
         super().__init__(config)
         self.plot_amplitude = self.get_plot_amplitude()
+
+    @property
+    def x_min(self):
+        return 0.0
+
+    @property
+    def x_max(self):
+        return self.L
 
 
     def setup_domain(self):
@@ -115,9 +125,24 @@ class HeatEquationProblem(BaseProblem):
         return du_t - self.alpha * du_xx
 
     def get_ics_bcs(self):
-        bc = dde.icbc.DirichletBC(self.geomtime, lambda x: 0.0, lambda _, on_boundary: on_boundary)
-        ic = dde.icbc.IC(self.geomtime, self.get_initial_condition_func(), lambda _, on_initial: on_initial)
-        return [bc, ic]
+        ic_bcs = []
+        # 1. Boundary Conditions: u(0, t) = 0 and u(L, t) = 0
+        if self.ic_bcs.get('bc', True):
+            bc = dde.icbc.DirichletBC(
+                self.geomtime, 
+                lambda x: 0.0, 
+                lambda x, on_boundary: on_boundary
+            )
+            ic_bcs.append(bc)
+        # 2. Initial Condition for temperature: u(x, 0) = f(x)
+        if self.ic_bcs.get('ic', True):
+            ic = dde.icbc.IC(
+                self.geomtime,
+                self.get_initial_condition_func(),
+                lambda _, on_initial: on_initial
+            )
+            ic_bcs.append(ic)
+        return ic_bcs
 
     def get_initial_condition_func(self):
         def ic_func(x_input_np):
@@ -160,6 +185,8 @@ class HeatEquationProblem(BaseProblem):
                     lambda_n = _alpha * (k_val_ic**2)
                     term = amplitude * np.sin(k_val_ic * x) * np.exp(-lambda_n * t)
                 u_sol += term
+
+        return u_sol
     
     def get_plot_amplitude(self):
         # Logic to determine the y-axis range for plots
@@ -168,3 +195,26 @@ class HeatEquationProblem(BaseProblem):
         elif self.ic_type == 'gaussian':
             return self.ic_params.get('gauss_amplitude', 5.0)
         return 5.0 # default
+
+    def get_output_transform(self):
+        # def output_transform(inputs, outputs):
+        """
+        Custom output transform for the wave equation.
+        This is used to apply any specific transformations to the output of the model.
+        For wave equations, we apply u(x, t) = b(x,t) + phi(x,t) * u_nn(x,t)
+        where b(x,t) is the initial condition solution and phi(x,t) is the ADF. u_nn(x,t) is the neural network output.
+        """
+        def output_transform(inputs, outputs):
+            x, t = inputs[:, 0:1], inputs[:, 1:2]
+            # convert x grad tensor to numpy if needed (use tensor.detach() for torch)
+            if isinstance(x, torch.Tensor):
+                x_np = x.detach().cpu().numpy()
+            b = self.get_initial_condition_func()(x_np)
+            # convert back to torch if needed
+            if isinstance(b, np.ndarray):
+                b = torch.tensor(b, device=inputs.device, dtype=inputs.dtype)
+
+            exp = torch.exp(-50  * t)
+            phi = x * (self.L - x) * (1-exp)
+            return b * exp + phi * outputs
+        return output_transform

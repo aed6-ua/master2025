@@ -1,6 +1,6 @@
 # --- Experiment Setup ---
-experiment_name: "Wave-PINN-grad-cond" #"Wave-Equation-PINN-relu" #"Wave-Equation"
-run_name: "Std_PINN"
+experiment_name: "Wave-VarBCSNN-grad-cond" #"Wave-Equation"
+run_name: "VarBCSNN"
 mlflow_tracking_uri: "file:./mlruns"
 
 # --- Problem Definition ---
@@ -13,24 +13,27 @@ problem:
     mode: 4       # Initial standing wave mode
     delta: 10.0   # Initial amplitude
   ic_bcs:         # Which initial conditions and boundary conditions to use
-    ic: true
-    bc: true
-    ic_ut: true
+    ic: false
+    bc: false
+    ic_ut: false
 
 # --- Model Architecture ---
 model:
-  name: "StandardPINN"  # Use the standard PINN (MLP) model
+  name: "VarBCSNN"  # Use the standard PINN (MLP) model
   mlp:
     hidden_dim: 30
     num_layers: 3
     activation: "tanh"
   output_transform: false
+  n_freq_fixed: 10
+  n_freq_learnable: 10
+  k_init_bounds: [-1.0, 20.0]
 
 # --- Training ---
 trainer:
   name: "StandardTrainer"
   # loss weights for [PDE, BC, IC_u, IC_ut]
-  loss_weights: [1.0e-2, 1.0, 1.0e+3, 1.0e-3]
+  loss_weights: [1.0]
   optimizer: "Adam"
   learning_rate: 0.001
   iterations: 20000
@@ -41,9 +44,9 @@ trainer:
 # --- Data & Sampling ---
 data:
   num_domain: 500
-  num_boundary: 100
-  num_initial: 100
-  num_test: 250
+  num_boundary: 0
+  num_initial: 0
+  num_test: 500
 
 # --- Execution ---
 execution:

@@ -5,6 +5,16 @@ class BaseProblem(ABC):
         self.config = config
         self.geomtime = self.setup_domain()
 
+    @property
+    @abstractmethod
+    def x_min(self):
+        pass
+
+    @property
+    @abstractmethod
+    def x_max(self):
+        pass
+
     @abstractmethod
     def setup_domain(self):
         pass
@@ -28,3 +38,7 @@ class BaseProblem(ABC):
     @abstractmethod
     def get_plot_amplitude(self):
         pass
+
+    @property
+    def domain_length(self):
+        return self.x_max - self.x_min

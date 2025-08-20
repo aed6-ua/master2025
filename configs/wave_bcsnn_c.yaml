@@ -1,6 +1,6 @@
 # --- Experiment Setup ---
-experiment_name: "Wave-PINN-grad-cond" #"Wave-Equation"
-run_name: "BCNN"
+experiment_name: "Multi-scale wave" #"FRAMEWORK_TESTING" #"Wave-Equation-BCSNN" #"Wave-Equation"
+run_name: "BCSNN"
 mlflow_tracking_uri: "file:./mlruns"
 
 # --- Problem Definition ---
@@ -8,10 +8,11 @@ problem:
   name: "WaveEquationProblem"  # Use the wave equation problem class
   L: 1.0
   T: 1.0
-  c_squared: 2.0  # Physical parameter for the wave equation
+  c_squared: 100.0  # Physical parameter for the wave equation
   ic_params:
-    mode: 4       # Initial standing wave mode
-    delta: 10.0   # Initial amplitude
+    mode: 2       # Initial standing wave mode
+    delta: 1.0   # Initial amplitude
+    multi: true
   ic_bcs:         # Which initial conditions and boundary conditions to use
     ic: false
     bc: false
@@ -19,12 +20,15 @@ problem:
 
 # --- Model Architecture ---
 model:
-  name: "BCNN"  # Use the standard PINN (MLP) model
+  name: "BCSNN"  # Use the standard PINN (MLP) model
   mlp:
-    hidden_dim: 30
+    hidden_dim: 200
     num_layers: 3
     activation: "tanh"
-  output_transform: true
+  output_transform: false
+  n_freq_fixed: 10
+  n_freq_learnable: 0
+  k_init_bounds: [-1.0, 20.0]
 
 # --- Training ---
 trainer:
@@ -33,19 +37,22 @@ trainer:
   loss_weights: [1.0]
   optimizer: "Adam"
   learning_rate: 0.001
-  iterations: 20000
-  use_lbfgs: true
+  iterations: 40000
+  use_lbfgs: false
   lbfgs_maxiter: 20000
   save_model: false
 
 # --- Data & Sampling ---
 data:
-  num_domain: 500
+  num_domain: 360
   num_boundary: 0
   num_initial: 0
-  num_test: 500
+  num_test: 360
 
 # --- Execution ---
 execution:
   device: "gpu"
+  # NEW: Optional path to a pre-trained model run
+  # If specified, training will be skipped.
+  # format: "mlruns/<experiment_id>/<run_id>/artifacts/model"
   load_model_path: null # or e.g., "mlruns/1/d3a4b.../artifacts/model"

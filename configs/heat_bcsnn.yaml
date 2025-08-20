@@ -1,0 +1,119 @@
+# --- Experiment Setup ---
+experiment_name: "Heat_Equation_BCSNN-pi-relu" #"FRAMEWORK_TESTING" #"Heat_Equation_BCSNN_30Sine_phi_x" #"Wave-Equation-BCSNN" #"Wave-Equation"
+run_name: "BCSNN"
+mlflow_tracking_uri: "file:./mlruns" #"file:./mlruns"
+
+# --- Problem Definition ---
+problem:
+  name: "HeatEquationProblem"
+  L: 1.0
+  T: 1.0
+  alpha: 0.0005 # Thermal diffusivity for heat equation
+  ic_type: "sum_sine"
+  ic_params:
+    # A simple initial condition for testing
+    sum_sine_components: 
+      - [4.0, 9.4247]  # [amp, k] where k = 3*pi/L
+      - [2.0, 15.708] # [amp, k] where k = 5*pi/L
+      - [7.69, 62.8319]
+      - [2.81, 56.5487]
+      - [7.45, 144.5133]
+      - [4.21, 106.8142]
+      - [8.55, 163.3628]
+      - [0.80, 75.3982]
+      - [1.57, 109.9557]
+      - [2.78, 47.1239]
+      - [7.06, 125.6637]
+      - [4.74, 15.7080]
+      - [5.29, 18.8496]
+      - [6.53, 43.9823]
+      - [5.08, 72.2566]
+      - [6.80, 69.1150]
+      - [2.25, 62.8319]
+      - [9.86, 131.9469]
+      - [8.43, 103.6726]
+      - [1.53, 47.1239]
+      - [9.74, 18.8496]
+      - [0.58, 50.2655]
+      - [1.57, 40.8407]
+      - [4.63, 122.5221]
+      - [5.39, 116.2389]
+      - [5.02, 59.6903]
+      - [8.36, 141.3717]
+      - [7.21, 40.8407]
+      - [5.88, 28.2743]
+      - [3.16, 18.8496]
+      - [1.80, 131.9469]
+      - [3.12, 53.4071]
+      # - [7.69, 62.8319]
+      # - [2.81, 131.9469]
+      # - [7.45, 131.9469]
+      # - [4.21, 12.5664]
+      # - [8.55, 131.9469]
+      # - [0.80, 75.3982]
+      # - [1.57, 125.6637]
+      # - [2.78, 69.1150]
+      # - [7.06, 125.6637]
+      # - [4.74, 56.5487]
+      # - [5.29, 6.2832]
+      # - [6.53, 31.4159]
+      # - [5.08, 119.3805]
+      # - [6.80, 81.6814]
+      # - [2.25, 106.8142]
+      # - [9.86, 150.7964]
+      # - [8.43, 31.4159]
+      # - [1.53, 113.0973]
+      # - [9.74, 113.0973]
+      # - [0.58, 62.8319]
+      # - [1.57, 131.9469]
+      # - [4.63, 75.3982]
+      # - [5.39, 87.9646]
+      # - [5.02, 119.3805]
+      # - [8.36, 18.8496]
+      # - [7.21, 31.4159]
+      # - [5.88, 106.8142]
+      # - [3.16, 119.3805]
+      # - [1.80, 31.4159]
+      # - [3.12, 94.2478]
+  ic_bcs:         # Which initial conditions and boundary conditions to use
+    ic: false
+    bc: false
+
+# --- Model Architecture ---
+model:
+  name: "BCSNN"  # Use the standard PINN (MLP) model
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "ReLU"
+  output_transform: false
+  n_freq_fixed: 30
+  n_freq_learnable: 0
+  k_init_bounds: [-1.0, 150.0]
+
+# --- Training ---
+trainer:
+  name: "StandardTrainer"
+  # loss weights for [PDE, BC, IC_u, IC_ut]
+  loss_weights: [1.0]
+  optimizer: "Adam"
+  learning_rate: 0.001
+  iterations: 10000
+  use_lbfgs: true
+  lbfgs_maxiter: 10000
+  save_model: false
+
+# --- Data & Sampling ---
+data:
+  num_domain: 10600
+  num_boundary: 0
+  num_initial: 0
+  num_test: 5000
+
+# --- Execution ---
+execution:
+  device: "gpu"
+  # NEW: Optional path to a pre-trained model run
+  # If specified, training will be skipped.
+  # format: "mlruns/<experiment_id>/<run_id>/artifacts/model"
+  load_model_path: null # or e.g., "mlruns/1/d3a4b.../artifacts/model"

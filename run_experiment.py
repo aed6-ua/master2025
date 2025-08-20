@@ -51,6 +51,14 @@ def main(config_path, seed):
 
     device = setup_device(config)
 
+    # OVERFITTING EXPERIMENT
+    # Set the sine wave frequency to a value depending on the seed
+    # if seed is not None:
+    #     sine_freq = 4 * np.pi * (seed % 10 + 1)
+    #     config['problem']['ic_params']['sum_sine_components'] = [(5.0, sine_freq)]
+    #     # alpha is decreasing with seed
+    #     config['problem']['alpha'] = 0.1 / ((seed % 10 + 1)*20)
+
     # 2. Load Problem, Model, and Trainer classes dynamically
     ProblemClass = load_class('src.problems', config['problem']['name'])
     ModelClass = load_class('src.models.all_models', config['model']['name'])
@@ -69,13 +77,13 @@ def main(config_path, seed):
     if hasattr(net, 'load_ic_data'):
         print("Model has 'load_ic_data' method. Performing pre-training IC analysis.")
         # Generate a fine grid of points for the IC
-        ic_grid_x = np.linspace(0, problem.L, 2048).reshape(-1, 1)
+        ic_grid_x = np.linspace(problem.x_min, problem.x_max, 2048).reshape(-1, 1)
         ic_func = problem.get_initial_condition_func()
         ic_grid_u = ic_func(ic_grid_x).flatten()
         
         # Get number of fixed frequencies from config
         model_cfg = config.get('model', {})
-        n_freq_fixed = model_cfg.get('n_freq_k_fixed', 50)
+        n_freq_fixed = model_cfg.get('n_freq_fixed', 50)
         
         # Perform FFT
         k_vals, a_vals, b_vals = fft1D(ic_grid_u, ic_grid_x.flatten(), n_freq_fixed)
@@ -84,16 +92,27 @@ def main(config_path, seed):
         net.load_ic_data(k_vals, a_vals, b_vals)
 
     # 4. Setup DeepXDE Data object
-    data = dde.data.TimePDE(
-        problem.geomtime,
-        problem.pde,
-        problem.get_ics_bcs(),
-        num_domain=config['data']['num_domain'],
-        num_boundary=config['data']['num_boundary'],
-        num_initial=config['data']['num_initial'],
-        solution=problem.analytical_solution,
-        num_test=config['data']['num_test'],
-    )
+    if hasattr(problem, 'get_test_data'):
+            data = dde.data.TimePDE(
+            problem.geomtime,
+            problem.pde,
+            problem.get_ics_bcs(),
+            num_domain=config['data']['num_domain'],
+            num_boundary=config['data']['num_boundary'],
+            num_initial=config['data']['num_initial']
+        )
+    else:
+        print("Using analytical solution for test data.")
+        data = dde.data.TimePDE(
+            problem.geomtime,
+            problem.pde,
+            problem.get_ics_bcs(),
+            num_domain=config['data']['num_domain'],
+            num_boundary=config['data']['num_boundary'],
+            num_initial=config['data']['num_initial'],
+            solution=problem.analytical_solution,
+            num_test=config['data']['num_test'],
+        )
     
     dde_model = dde.Model(data, net)
     
@@ -114,9 +133,9 @@ def main(config_path, seed):
         mlflow.log_param("num_model_parameters", sum(p.numel() for p in net.parameters()))
         
         # Setup Callbacks
-        from src.utils.callbacks import MLFlowMetricsLogger, PredictionLogger, ModelParameterLogger
+        from src.utils.callbacks import MLFlowMetricsLogger, PredictionLogger, ModelParameterLogger#, GradientImbalanceLogger
 
-        log_points_np = problem.geomtime.uniform_points(100*100)
+        log_points_np = problem.geomtime.uniform_points(200*200)
     
         # This callback logs losses and L2 error
         metrics_logger = MLFlowMetricsLogger(log_every=300)
@@ -135,11 +154,15 @@ def main(config_path, seed):
             run_name=config['run_name']
         )
 
+        # grad_imbalance_logger = GradientImbalanceLogger(
+        #     log_every=300
+        # )
+
         # Resampler
         pde_resampler = dde.callbacks.PDEPointResampler(period=300)
         
         # --- Combine all callbacks into a list ---
-        callbacks = [pde_resampler, metrics_logger, prediction_logger, param_logger]
+        callbacks = [pde_resampler, metrics_logger, prediction_logger, param_logger]#, grad_imbalance_logger]
         
         # 6. Train the model
         if device.type == 'cuda':
@@ -160,24 +183,57 @@ def main(config_path, seed):
         
         # Log learned parameters specific to the model
         net.log_specific_params(mlflow)
-        
-        # Ensure log_points are on the correct device for prediction
-        log_points_tensor = torch.from_numpy(log_points_np).to(device)
-        final_preds_tensor = torch.from_numpy(dde_model.predict(log_points_np)).to(device)
-        true_vals_tensor = problem.analytical_solution(log_points_tensor)
 
-        # Move results back to CPU for pandas/plotting
-        final_preds = final_preds_tensor.cpu().numpy()
-        true_vals = true_vals_tensor.cpu().numpy()
-        df = pd.DataFrame({
-            'x': log_points_np[:, 0],
-            'time': log_points_np[:, 1],
-            'model': final_preds.flatten(),
-            'ground_truth': true_vals.flatten(),
-            'difference': (final_preds - true_vals).flatten()
-        })
-        from src.utils.plotting import create_final_solution_plots
-        create_final_solution_plots(df, config['run_name'], problem.plot_amplitude)
+        X_test, y_test = None, None
+        if hasattr(problem, 'get_test_data'):
+            X_test, y_test = problem.get_test_data()
+
+        if X_test is not None and y_test is not None:
+            final_preds = dde_model.predict(X_test)
+
+            # Calculate final L2 relative error and log it
+            final_l2_error = dde.metrics.l2_relative_error(y_test, final_preds)
+            print(f"Final L2 Relative Error: {final_l2_error:.6f}")
+            mlflow.log_metric("final_l2_relative_error", final_l2_error)
+
+            output_dim = y_test.shape[1]
+            if output_dim > 1:
+                model_amp = np.sqrt(final_preds[:, 0]**2 + final_preds[:, 1]**2)
+                truth_amp = np.sqrt(y_test[:, 0]**2 + y_test[:, 1]**2)
+                df = pd.DataFrame({
+                    'x': X_test[:, 0],
+                    'time': X_test[:, 1],
+                    'model': model_amp.flatten(),
+                    'ground_truth': truth_amp.flatten(),
+                    'difference': (model_amp - truth_amp).flatten()
+                })
+            else:
+                df = pd.DataFrame({
+                    'x': X_test[:, 0],
+                    'time': X_test[:, 1],
+                    'model': final_preds.flatten(),
+                    'ground_truth': y_test.flatten(),
+                    'difference': (final_preds - y_test).flatten()
+                })
+            from src.utils.plotting import create_final_solution_plots
+            create_final_solution_plots(df, config['run_name'], problem.get_plot_amplitude())
+
+        else:
+            log_points_tensor = torch.from_numpy(log_points_np).to(device)
+            final_preds_tensor = torch.from_numpy(dde_model.predict(log_points_np)).to(device)
+            true_vals_tensor = problem.analytical_solution(log_points_tensor)
+
+            final_preds = final_preds_tensor.cpu().numpy()
+            true_vals = true_vals_tensor.cpu().numpy()
+            df = pd.DataFrame({
+                'x': log_points_np[:, 0],
+                'time': log_points_np[:, 1],
+                'model': final_preds.flatten(),
+                'ground_truth': true_vals.flatten(),
+                'difference': (final_preds - true_vals).flatten()
+            })
+            from src.utils.plotting import create_final_solution_plots
+            create_final_solution_plots(df, config['run_name'], problem.plot_amplitude)
         
 
 

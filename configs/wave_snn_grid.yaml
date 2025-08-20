@@ -1,0 +1,44 @@
+# --- Experiment Setup ---
+experiment_name: "Wave_Equation_SNN_Final_Runs"
+run_name: "SNN-Grid-FixedFreqs-Tanh"
+mlflow_tracking_uri: "http://127.0.0.1:5000"
+
+# --- Problem Definition ---
+problem:
+  name: "WaveEquationProblem"  # Maps to the new class name
+  L: 1.0
+  T: 1.0
+  c_squared: 2.0  # Physical parameter for the wave equation (your old 'alpha')
+  ic_params:
+    mode: 4       # Initial standing wave mode
+    delta: 10.0   # Initial amplitude
+
+# --- Model Architecture ---
+model:
+  name: "SNN_Grid"  # Let's use the SNN_Grid model for this example
+  n_freq_k: 10
+  n_freq_w: 10
+  fixed_s_freqs: true # Use a fixed DFT grid for spatial frequencies
+  fixed_t_freqs: true # Use a fixed DFT grid for temporal frequencies
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "Tanh"
+
+# --- Training ---
+trainer:
+  name: "standard"
+  # loss weights for [PDE, BC, IC_u, IC_ut]
+  loss_weights: [1.0e-2, 1.0, 1.0e3, 1.0e-3]
+  optimizer: "Adam"
+  learning_rate: 0.001
+  iterations: 20000
+  use_lbfgs: false # L-BFGS can be unstable for wave equation
+  lbfgs_maxiter: 0
+
+# --- Data & Sampling ---
+data:
+  num_domain: 4000
+  num_boundary: 1000
+  num_initial: 1000
+  num_test: 2500

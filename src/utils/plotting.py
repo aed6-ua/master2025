@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import mlflow
+import io
 
 # =============================================================================
 # == FUNCTIONS FOR VISUALIZING THE FINAL TRAINED STATE (called from run_experiment.py)
@@ -24,20 +25,19 @@ def create_final_solution_plots(df, run_name, plot_amplitude):
     # --- Animated Line Plot: Model vs. Ground Truth ---
     fig_line = px.line(
         df, x='x', y=['model', 'ground_truth'], animation_frame='time',
-        title=f'Final Solution: Model vs. Ground Truth ({run_name})',
-        labels={'value': 'u(x,t)'}
+        title=f'Final Solution: Model vs. Ground Truth ({run_name})'
     )
-    fig_line.update_layout(yaxis_range=[-plot_amplitude * 1.2, plot_amplitude * 1.2])
+    fig_line.update_layout(yaxis_range=[-plot_amplitude * 1.2, plot_amplitude * 1.2], yaxis_title="u(x,t) or Amplitude")
     mlflow.log_figure(fig_line, 'final_plots/solution_vs_time.html')
 
     # --- Heatmap Grid ---
     _create_final_heatmap_grid(df, run_name)
 
     # --- Save the final data as a CSV artifact ---
-    df_path = "final_predictions.csv"
-    df.to_csv(df_path, index=False)
-    mlflow.log_artifact(df_path, "data_artifacts")
-    print(f"Logged final predictions dataframe to MLflow artifact: data_artifacts/{df_path}")
+    df_path = io.StringIO()
+    df.to_csv(df_path, index=True)
+    mlflow.log_text(df_path.getvalue(), artifact_file=f"data_artifacts/final_predictions.csv")
+    print(f"Logged final predictions dataframe to MLflow artifact: data_artifacts/final_predictions.csv")
 
 def _create_final_heatmap_grid(df, run_name):
     """Helper function to create a 2x1 grid of heatmaps: Solution and Difference."""

@@ -1,0 +1,39 @@
+# configs/allen_cahn/1_pinn.yaml
+
+experiment_name: "Allen-Cahn-PINN"
+run_name: "StandardPINN"
+mlflow_tracking_uri: "file:./mlruns"
+
+problem:
+  name: "AllenCahnEquationProblem"
+  d: 0.001
+  ground_truth_path: "dataset/Allen_Cahn.mat"
+  # Use soft constraints for both IC and BC
+  ic_bcs:
+    ic: true
+    bc: true
+
+model:
+  name: "StandardPINN"
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "tanh"
+  output_transform: false # No hard constraints
+
+trainer:
+  name: "StandardTrainer"
+  loss_weights: [1.0, 100, 100] # [PDE, BC, IC]
+  learning_rate: 0.001
+  iterations: 20000
+  use_lbfgs: true
+  lbfgs_maxiter: 20000
+  save_model: true
+
+data:
+  num_domain: 8000
+  num_boundary: 400
+  num_initial: 800
+
+execution:
+  device: "gpu"

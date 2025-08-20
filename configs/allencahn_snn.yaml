@@ -1,0 +1,40 @@
+# configs/allen_cahn/3_spectral_nn.yaml
+
+experiment_name: "Allen-Cahn-SNN"
+run_name: "SNN"
+mlflow_tracking_uri: "file:./mlruns"
+
+problem:
+  name: "AllenCahnEquationProblem"
+  d: 0.001
+  ground_truth_path: "dataset/Allen_Cahn.mat"
+  ic_bcs:
+    ic: true
+    bc: true
+
+model:
+  name: "SpectralNN"
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "tanh"
+  n_freq_k_learnable: 50
+  k_init_bounds: [3, 200.0]
+  output_transform: false
+
+trainer:
+  name: "SpectralTrainer"
+  loss_weights: [1.0, 100, 100] # [PDE, BC, IC]
+  learning_rate: 0.001
+  iterations: 10000
+  use_lbfgs: true
+  lbfgs_maxiter: 10000
+  save_model: true
+
+data:
+  num_domain: 10600
+  num_boundary: 400
+  num_initial: 800
+
+execution:
+  device: "gpu"

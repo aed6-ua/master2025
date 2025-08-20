@@ -1,5 +1,5 @@
 # --- Experiment Setup ---
-experiment_name: "Wave-Equation-SNN" #"Wave-Equation"
+experiment_name: "Wave-SNN-grad-cond" #"Wave-Equation"
 run_name: "SNN"
 mlflow_tracking_uri: "file:./mlruns"
 
@@ -35,9 +35,10 @@ trainer:
   loss_weights: [1.0e-2, 1.0e+2, 1.0e+3, 1.0e-3]
   optimizer: "Adam"
   learning_rate: 0.001
-  iterations: 17000
+  iterations: 20000
   use_lbfgs: true
-  lbfgs_maxiter: 3000
+  lbfgs_maxiter: 20000
+  save_model: false
 
 # --- Data & Sampling ---
 data:

@@ -1,21 +1,22 @@
 # --- Experiment Setup ---
-experiment_name: "Wave-BCSNN-grad-cond" #"FRAMEWORK_TESTING" #"Wave-Equation-BCSNN" #"Wave-Equation"
+experiment_name: "Overfitting-Experiment2" #"Wave-Equation-BCSNN" #"Wave-Equation"
 run_name: "BCSNN"
-mlflow_tracking_uri: "file:./mlruns"
+mlflow_tracking_uri: "https://63d839c6b182.ngrok-free.app" #"file:./mlruns"
 
 # --- Problem Definition ---
 problem:
-  name: "WaveEquationProblem"  # Use the wave equation problem class
+  name: "HeatEquationProblem"
   L: 1.0
   T: 1.0
-  c_squared: 2.0  # Physical parameter for the wave equation
+  alpha: 0.0005 # Thermal diffusivity for heat equation
+  ic_type: "sum_sine"
   ic_params:
-    mode: 4       # Initial standing wave mode
-    delta: 10.0   # Initial amplitude
+    # A simple initial condition for testing
+    sum_sine_components: 
+      - [5.0, 9.4247]
   ic_bcs:         # Which initial conditions and boundary conditions to use
     ic: false
     bc: false
-    ic_ut: false
 
 # --- Model Architecture ---
 model:
@@ -25,9 +26,9 @@ model:
     num_layers: 3
     activation: "tanh"
   output_transform: false
-  n_freq_fixed: 10
+  n_freq_fixed: 20
   n_freq_learnable: 0
-  k_init_bounds: [-1.0, 20.0]
+  k_init_bounds: [-1.0, 150.0]
 
 # --- Training ---
 trainer:
@@ -36,9 +37,9 @@ trainer:
   loss_weights: [1.0]
   optimizer: "Adam"
   learning_rate: 0.001
-  iterations: 20000
+  iterations: 10000
   use_lbfgs: true
-  lbfgs_maxiter: 20000
+  lbfgs_maxiter: 10000
   save_model: false
 
 # --- Data & Sampling ---

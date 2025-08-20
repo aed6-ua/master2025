@@ -1,0 +1,50 @@
+# configs/burgers_pinn.yaml
+
+# --- Experiment Setup ---
+experiment_name: "Burgers-Equation"
+run_name: "StandardPINN"
+mlflow_tracking_uri: "file:./mlruns"
+
+# --- Problem Definition ---
+problem:
+  name: "BurgersEquationProblem"
+  # Domain for the standard Burgers' problem
+  L_min: -1.0
+  L_max: 1.0
+  T: 0.99
+  # Viscosity parameter (nu)
+  nu: 0.00318309886 # This is 0.01 / pi
+  # Path to the ground truth data file
+  ground_truth_path: "dataset/Burgers.npz"
+
+# --- Model Architecture ---
+model:
+  name: "StandardPINN"
+  mlp:
+    hidden_dim: 30
+    num_layers: 3
+    activation: "tanh"
+  output_transform: false
+
+# --- Training ---
+trainer:
+  name: "StandardTrainer"
+  # Loss weights for [PDE, BC, IC]
+  loss_weights: [1.0, 100, 100]
+  optimizer: "Adam"
+  learning_rate: 0.001
+  iterations: 20000
+  use_lbfgs: true
+  lbfgs_maxiter: 20000
+  save_model: true
+
+# --- Data & Sampling ---
+data:
+  num_domain: 2540
+  num_boundary: 80
+  num_initial: 160
+  num_test: 2000
+
+# --- Execution ---
+execution:
+  device: "gpu"
